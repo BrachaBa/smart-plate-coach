@@ -7,6 +7,7 @@ later at a lower learning rate).
 """
 
 import torch.nn as nn
+from torchvision import transforms
 from torchvision.models import EfficientNet_B0_Weights, efficientnet_b0
 
 
@@ -27,6 +28,31 @@ def get_inference_transforms():
     separate train-only transform that adds augmentation on top of this.
     """
     return EfficientNet_B0_Weights.DEFAULT.transforms()
+
+
+def get_train_transforms():
+    """Train-only augmentation (spec 2.3): Flip / Rotation / Color-Jitter /
+    light Random Crop, layered on top of the same resize+normalize the
+    backbone was pretrained with.
+
+    Never apply this to validation/test — spec 2.3 requires augmentation on
+    the Train split only, to avoid measuring the model against inflated data.
+    """
+    inference_transform = EfficientNet_B0_Weights.DEFAULT.transforms()
+    resize_size = inference_transform.resize_size[0]
+    crop_size = inference_transform.crop_size[0]
+
+    return transforms.Compose(
+        [
+            transforms.Resize(resize_size),
+            transforms.RandomCrop(crop_size),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=inference_transform.mean, std=inference_transform.std),
+        ]
+    )
 
 
 def set_backbone_trainable(model: nn.Module, trainable: bool) -> None:

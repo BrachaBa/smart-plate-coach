@@ -82,12 +82,17 @@ def train_model(
     lr=1e-3,
     num_workers=0,
     run_name="run",
+    model=None,
 ):
     """Train, validate each epoch, and return (model, history_df).
 
     freeze_backbone=True is the Transfer Learning phase (spec 2.1): only the
     new classifier head trains. False is Fine-Tuning: upper layers unfreeze
     too, normally paired with a lower lr by the caller.
+
+    Pass an already-trained `model` to continue training it (e.g. the
+    Fine-Tuning phase continuing from the Transfer Learning phase's weights)
+    instead of starting over from ImageNet weights.
     """
     device = get_device()
     print(
@@ -101,7 +106,8 @@ def train_model(
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-    model = build_model(num_classes).to(device)
+    if model is None:
+        model = build_model(num_classes).to(device)
     set_backbone_trainable(model, trainable=not freeze_backbone)
 
     criterion = nn.CrossEntropyLoss()
@@ -132,6 +138,67 @@ def train_model(
         )
 
     return model, pd.DataFrame(history)
+
+
+def train_transfer_then_finetune(
+    train_df,
+    val_df,
+    class_to_idx,
+    num_classes,
+    train_transform,
+    eval_transform,
+    transfer_epochs,
+    finetune_epochs,
+    batch_size=64,
+    transfer_lr=1e-3,
+    finetune_lr=1e-4,
+    num_workers=0,
+    run_name="run",
+):
+    """Two-phase training (spec 2.1): Transfer Learning (frozen backbone) then
+    Fine-Tuning (unfrozen backbone, lower lr), continuing the same model
+    instead of retraining from ImageNet weights each phase.
+
+    Returns (model, combined_history_df) with a `phase` column so callers
+    can plot Transfer Learning vs Fine-Tuning learning curves separately
+    (spec 2.4).
+    """
+    model, transfer_history = train_model(
+        train_df,
+        val_df,
+        class_to_idx,
+        num_classes,
+        train_transform,
+        eval_transform,
+        freeze_backbone=True,
+        epochs=transfer_epochs,
+        batch_size=batch_size,
+        lr=transfer_lr,
+        num_workers=num_workers,
+        run_name=f"{run_name}-transfer",
+    )
+    transfer_history["phase"] = "transfer_learning"
+
+    model, finetune_history = train_model(
+        train_df,
+        val_df,
+        class_to_idx,
+        num_classes,
+        train_transform,
+        eval_transform,
+        freeze_backbone=False,
+        epochs=finetune_epochs,
+        batch_size=batch_size,
+        lr=finetune_lr,
+        num_workers=num_workers,
+        run_name=f"{run_name}-finetune",
+        model=model,
+    )
+    finetune_history["phase"] = "fine_tuning"
+    finetune_history["epoch"] += transfer_epochs
+
+    history = pd.concat([transfer_history, finetune_history], ignore_index=True)
+    return model, history
 
 
 def evaluate_on_test(model, test_df, class_to_idx, eval_transform, batch_size=64, num_workers=0):
