@@ -97,6 +97,65 @@ python -c "from vision.ablation import run_config_4_full; run_config_4_full()"
 python -c "from vision.ablation import summarize_ablation; summarize_ablation()"
 ```
 
+## 4. Mislabeled-data review (optional)
+
+Requires a trained model checkpoint (e.g. from step 3) and step 2's cleaned CSV.
+Flags training images where the model's confident prediction disagrees with the
+given label — a review list for a human, not an automatic fix.
+
+```bash
+python -c "
+import torch, pandas as pd
+from vision.dataset import load_food101_splits, make_class_to_idx
+from vision.vision_model import build_model, get_inference_transforms
+from vision.train import get_device, CHECKPOINT_DIR, DATA_DIR, RESULTS_DIR
+from vision.data_cleaning import flag_mislabel_candidates
+
+classes, _, _ = load_food101_splits(DATA_DIR)
+class_to_idx = make_class_to_idx(classes)
+device = get_device()
+
+model = build_model(len(classes)).to(device)
+model.load_state_dict(torch.load(CHECKPOINT_DIR / 'config4_full.pt', map_location=device))
+
+train_clean = pd.read_csv(RESULTS_DIR / 'train_clean.csv')
+result = flag_mislabel_candidates(train_clean, model, class_to_idx, get_inference_transforms(), device)
+result.to_csv(RESULTS_DIR / 'mislabel_candidates.csv', index=False)
+print(len(result), 'candidates written to', RESULTS_DIR / 'mislabel_candidates.csv')
+"
+```
+
+- Runs inference over the full cleaned train set, so expect it to take a while
+  (similar order of magnitude to one evaluation pass in step 1/3).
+- Uses whichever checkpoint you point it at — a more accurate model (e.g. the final
+  config 4 checkpoint) gives a more trustworthy signal than the baseline.
+- Output: `vision/results/mislabel_candidates.csv`.
+
+## 5. Visualizations
+
+Requires steps 1–3 to have produced their history/metrics files first.
+
+```bash
+python -u -m vision.visualizations
+```
+
+Generates the 4 required plots into `vision/results/figures/`:
+
+- `class_distribution.png` — train-set images per class, before vs after cleaning.
+- `learning_curves_<config>.png` — one per config with saved history, train vs val
+  loss/accuracy over epochs, with the Transfer Learning → Fine-Tuning transition
+  marked where applicable.
+- `confusion_matrix_config4_full.png` — normalized confusion matrix for the full
+  pipeline model, evaluated over the whole test set.
+- `ablation_study.png` — bar chart comparing all 4 configs' test accuracy/F1.
+
+The confusion matrix runs inference over the full test set, so this step is slower
+than the other plotting functions. To sanity-check quickly first:
+
+```bash
+python -c "from vision.visualizations import plot_confusion_matrix; plot_confusion_matrix(sample_per_class=5)"
+```
+
 ## Adjusting epochs/batch size
 
 All entry points take keyword overrides, e.g.:

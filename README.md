@@ -1,3 +1,4 @@
+
 # Plate Coach Vision
 
 Deep Learning component of **Smart Plate Coach AI** (see `docs/Smart_Plate_Coach_AI_Spec.pdf`, Part א׳):
@@ -5,19 +6,25 @@ a food-image classifier trained on Food-101 via Transfer Learning + Fine-Tuning,
 Data Cleaning / Augmentation / Ablation Study pipeline that feeds the project's LLM Agent
 (Part ב׳, not in this repo yet).
 
+**Result:** the full pipeline (cleaning + fine-tuning + augmentation) reached **82.8% test
+accuracy** (0.827 macro-F1), a **35.6% improvement** over the 61.1% baseline — well past the
+spec's required 15%. See `HOW_IT_WORKS.md` for what each step contributed.
+
 ## Project layout
 
 ```text
 data/food41/            Food-101-style dataset: images/, meta/meta/{classes,train,test}.txt
 notebooks/               Exploratory data-quality notebook (sample-based detection only)
+logs/                    Training stdout logs when run in the background (not committed)
 vision/
   dataset.py             Load splits, build class_to_idx, stratified train/val split, PyTorch Dataset
   vision_model.py         EfficientNet-B0 model builder, inference & train-time transforms
   data_cleaning.py         Full-dataset cleaning: corrupted/low-res/blank filtering, dedup, leakage removal
   train.py                 Core training loop; trains Ablation config (1) Baseline when run directly
   ablation.py              Ablation configs (2)-(4): cleaning, fine-tuning, augmentation
-  checkpoints/             Saved model weights (*.pt) — created on first run
-  results/                 Metrics/history CSVs and JSON — created on first run
+  visualizations.py        Generates the 4 required plots into vision/results/figures/
+  checkpoints/             Saved model weights (*.pt) — created on first run, not committed
+  results/                 Metrics/history CSVs, JSON, and figures/ — created on first run
 requirements.txt
 ```
 

@@ -1,0 +1,14 @@
+{
+  "train_total": 67500,
+  "train_corrupted": 0,
+  "train_low_res": 1,
+  "train_near_blank": 1,
+  "train_leaked_into_test_removed": 43,
+  "train_duplicates_removed": 76,
+  "train_remaining": 67379,
+  "test_total": 22500,
+  "test_corrupted": 0,
+  "test_low_res": 0,
+  "test_near_blank": 0,
+  "test_remaining": 22500
+}

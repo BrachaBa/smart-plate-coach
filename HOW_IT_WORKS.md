@@ -116,6 +116,10 @@ to check.
   check.
 - `vision/results/cleaning_report.json` — how many images were removed and why
   (corrupted / low-res / near-blank / leaked / duplicate), and how many remain.
+- `vision/results/mislabel_candidates.csv` — images where a trained model's confident
+  prediction disagrees with the given label (spec 2.2, "Mislabeled Data"). This is a
+  review list, not an auto-fix — a human still has to look at each flagged image and
+  decide whether the label is actually wrong.
 
 ## Where the code lives, mapped to the concepts above
 
@@ -130,3 +134,5 @@ to check.
   baseline entry point (`run_baseline`).
 - `vision/ablation.py` — configs 2–4 built from the same `train_model` building
   blocks, plus the final comparison/success-criterion check.
+- `vision/visualizations.py` — the 4 required plots (class distribution, learning
+  curves, confusion matrix, ablation bars), read from the saved history/metrics files.
