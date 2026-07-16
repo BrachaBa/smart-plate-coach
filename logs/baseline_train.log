@@ -1,0 +1,7 @@
+[baseline] device=mps train=60750 val=6750 epochs=5 freeze_backbone=True
+[baseline] epoch 1/5 train_loss=2.5775 train_acc=0.4235 val_loss=1.9694 val_acc=0.5225 (547.2s)
+[baseline] epoch 2/5 train_loss=1.9338 train_acc=0.5274 val_loss=1.8455 val_acc=0.5396 (595.3s)
+[baseline] epoch 3/5 train_loss=1.7997 train_acc=0.5516 val_loss=1.7951 val_acc=0.5499 (537.0s)
+[baseline] epoch 4/5 train_loss=1.7224 train_acc=0.5652 val_loss=1.7918 val_acc=0.5519 (536.0s)
+[baseline] epoch 5/5 train_loss=1.6767 train_acc=0.5755 val_loss=1.7506 val_acc=0.5569 (543.3s)
+[baseline] test metrics: {'test_accuracy': 0.6106666666666667, 'test_f1_macro': 0.6081196009345664}
