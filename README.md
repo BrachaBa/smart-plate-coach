@@ -1,14 +1,18 @@
 
-# Plate Coach Vision
+# Smart Plate Coach AI
 
-Deep Learning component of **Smart Plate Coach AI** (see `docs/Smart_Plate_Coach_AI_Spec.pdf`, Part א׳):
-a food-image classifier trained on Food-101 via Transfer Learning + Fine-Tuning, with a
-Data Cleaning / Augmentation / Ablation Study pipeline that feeds the project's LLM Agent
-(Part ב׳, not in this repo yet).
+Two parts, per `docs/Smart_Plate_Coach_AI_Spec.pdf`:
 
-**Result:** the full pipeline (cleaning + fine-tuning + augmentation) reached **82.8% test
-accuracy** (0.827 macro-F1), a **35.6% improvement** over the 61.1% baseline — well past the
-spec's required 15%. See `HOW_IT_WORKS.md` for what each step contributed.
+- **Part א׳ — Vision**: a food-image classifier trained on Food-101 via Transfer Learning +
+  Fine-Tuning, with a Data Cleaning / Augmentation / Ablation Study pipeline. **Done.**
+  Full pipeline (cleaning + fine-tuning + augmentation) reached **82.8% test accuracy**
+  (0.827 macro-F1), a **35.6% improvement** over the 61.1% baseline — well past the spec's
+  required 15%. See `HOW_IT_WORKS.md`.
+- **Part ב׳ — Agent**: a LangGraph + OpenRouter LLM agent ("Plate Coach") that consumes the
+  vision model's output to analyze meal photos, compute a Healthy Score, run what-if
+  simulations, and give general (non-medical) suggestions, via an interactive CLI.
+  **Core + CLI done; evals and packaging (manifest.json, PyInstaller) still pending.**
+  See `HOW_AGENT_WORKS.md`.
 
 ## Project layout
 
@@ -25,7 +29,21 @@ vision/
   visualizations.py        Generates the 4 required plots into vision/results/figures/
   checkpoints/             Saved model weights (*.pt) — created on first run, not committed
   results/                 Metrics/history CSVs, JSON, and figures/ — created on first run
+agent/
+  class_names.py          Static 90 Food-101 class names, matching the trained checkpoint
+  vision_model.py         Inference wrapper around vision/vision_model.py + the trained checkpoint
+  tools.py                RAG nutrition lookup + Code-Exec Healthy Score / what-if delta functions
+  data/nutrition_facts.json  Local nutrition-facts table (RAG source, ~50 foods)
+  state.py                Shared LangGraph state schema
+  nodes.py                All 10 graph nodes + the scope guard
+  graph.py                Compiled LangGraph workflows (analysis, simulation, history)
+  guardrails.py           Prescriptive-language rewriting + disclaimer
+  llm.py                  OpenRouter client wiring (models configurable via .env)
+  pricing.py              Placeholder per-model token pricing for cost display/evals
+  cli.py                  Interactive CLI entrypoint (python -m agent.cli)
+evals/                    LLM-as-judge / cost / scope evals (not yet implemented)
 requirements.txt
+.env.example              Required env vars (OpenRouter, LangSmith) — no real values
 ```
 
 ## Setup
@@ -34,12 +52,13 @@ requirements.txt
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env   # then fill in OPENROUTER_API_KEY
 ```
 
 Data is expected at `data/food41/` with `images/<class>/<id>.jpg` and `meta/meta/{classes,train,test}.txt`
 (the standard Food-101 layout; this project's copy has 90 classes).
 
-## Training
+## Training the vision model
 
 See `TRAINING.md` for the full step-by-step commands and expected runtimes.
 
@@ -49,9 +68,22 @@ Quick start (baseline only):
 python -m vision.train
 ```
 
+## Running the agent
+
+```bash
+python -m agent.cli
+```
+
+Requires `vision/checkpoints/config4_full.pt` to already exist (see Training above) and
+`OPENROUTER_API_KEY` set in `.env`. See `RUNNING_AGENT.md` for a full walkthrough and
+troubleshooting (including an SSL note relevant to networks with a TLS-intercepting proxy).
+
 ## Where things are documented
 
 - **Product/requirements spec**: `docs/Smart_Plate_Coach_AI_Spec.pdf`
 - **Deep Learning assignment brief**: `docs/main/מטלת סיכום מעשית ב-Deep Learning.pdf`
-- **Training walkthrough (commands, runtimes)**: `TRAINING.md`
-- **How the pipeline works and why (concepts)**: `HOW_IT_WORKS.md`
+- **LLM Agent assignment brief**: `docs/main/פרויקט_סיום_LLMs.docx`
+- **Vision training walkthrough (commands, runtimes)**: `TRAINING.md`
+- **How the vision pipeline works and why (concepts)**: `HOW_IT_WORKS.md`
+- **Agent walkthrough (commands, example session, troubleshooting)**: `RUNNING_AGENT.md`
+- **How the agent works and why (concepts)**: `HOW_AGENT_WORKS.md`

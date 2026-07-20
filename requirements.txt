@@ -12,3 +12,12 @@ jupyter
 ipykernel
 notebook
 imagehash
+
+# Agent (Part ב') — LangGraph + OpenRouter
+langgraph
+langchain-openai
+langchain-core
+openai
+langsmith
+python-dotenv
+truststore
