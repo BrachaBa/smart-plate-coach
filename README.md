@@ -74,10 +74,10 @@ Suggestions:
   - Consider swapping a pizza slice for grilled chicken to reduce calories (projected: 77/100)
 
 [COST] Cost of this task:
-  nutrition_analysis      201 in / 1180 out   $0.000000  (theoretical $0.000250)
-  improvement_planner     312 in / 2507 out   $0.000000  (theoretical $0.000523)
-  goal_adjuster           182 in / 1662 out   $0.000000  (theoretical $0.000345)
-  TOTAL                   695 in / 5349 out   $0.000000  (theoretical $0.001118)   [3 LLM calls]
+  nutrition_analysis      194 in / 1909 out   $0.000000  (theoretical $0.000395)
+  improvement_planner     335 in / 2475 out   $0.000000  (theoretical $0.000518)
+  goal_adjuster           166 in / 2794 out   $0.000000  (theoretical $0.000570)
+  TOTAL                   695 in / 7178 out   $0.000000  (theoretical $0.001484)   [3 LLM calls]
 
 what-if> what if I swap the pizza for a greek salad?
 ```
