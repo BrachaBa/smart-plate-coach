@@ -1,13 +1,21 @@
 /data
 venv/
+build-venv/
 logs/
 __pycache__/
 *.pyc
 vision/checkpoints/
-.envbuild/
+
+# secrets -- never commit
+.env
+
+# build output
+build/
 dist/
+
+# files the agent writes at runtime
 plate_coach_summary*.txt
 plate_coach_history.json
-.pricing_cache.json
 plate_coach_error.log
+.pricing_cache.json
 .pytest_cache/
