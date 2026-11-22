@@ -39,6 +39,11 @@ def rewrite_prescriptive_language(text: str) -> str:
     return text
 
 
+def _sentence_case(text: str) -> str:
+    text = text.strip()
+    return text[:1].upper() + text[1:]
+
+
 def apply_guardrails(final_output: dict) -> dict:
     """Rewrite prescriptive language and append the disclaimer.
 
@@ -52,7 +57,7 @@ def apply_guardrails(final_output: dict) -> dict:
     output = dict(final_output)
     if "suggestions" in output:
         output["suggestions"] = [
-            {**s, "text": rewrite_prescriptive_language(s["text"])} for s in output["suggestions"]
+            {**s, "text": _sentence_case(rewrite_prescriptive_language(s["text"]))} for s in output["suggestions"]
         ]
     if "message" in output:
         output["message"] = rewrite_prescriptive_language(output["message"])

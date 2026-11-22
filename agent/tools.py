@@ -132,13 +132,16 @@ def aggregate_profile(matched_records: list, portion_size: str = "medium") -> di
         serving_scale = record.get("serving_g", 200) / 100.0
         for field in _MACRO_FIELDS:
             totals[field] += record.get(field, 0.0) * serving_scale
-        veg_scores.append(record.get("veg_score", 0.0))
+        # Drinks carry nutrients (a soda's sugar counts) but are not part of the
+        # plate: averaging water's veg_score of 0 in made "add water" lower the score.
+        if not record.get("is_drink"):
+            veg_scores.append(record.get("veg_score", 0.0))
 
     for field in _MACRO_FIELDS:
         totals[field] *= multiplier
 
     totals["calories"] = totals.pop("calories_per_100g")
-    totals["veg_score"] = sum(veg_scores) / len(veg_scores)
+    totals["veg_score"] = sum(veg_scores) / len(veg_scores) if veg_scores else 0.0
     return totals
 
 

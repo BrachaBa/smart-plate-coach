@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import httpx
+import openai
 import truststore
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -30,13 +31,30 @@ def _load_env():
 
 _load_env()
 
+# LangSmith tracing is on when LANGSMITH_TRACING=true *and* a key is present.
+# Tracing "on" without a key only makes the client fail in the background, so it
+# is switched off here instead.
+if os.getenv("LANGSMITH_TRACING", "").lower() == "true" and not os.getenv("LANGSMITH_API_KEY"):
+    os.environ["LANGSMITH_TRACING"] = "false"
+LANGSMITH_ENABLED = os.getenv("LANGSMITH_TRACING", "").lower() == "true"
+
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
 # One free-tier model for everyday use, one paid model (the cost eval must include
 # a paid one), and a fixed judge for LLM-as-judge (kept separate from the models
 # under test, so no model grades its own answers).
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "google/gemma-4-26b-a4b-it:free")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "nvidia/nemotron-3.5-lightning:free")
+# Free models are often rate-limited upstream (429). On a 429 from a ":free"
+# model, call_llm retries the next free model here, and logs the one that answered.
+FREE_FALLBACKS = [
+    m.strip()
+    for m in os.getenv(
+        "FREE_FALLBACK_MODELS",
+        "nvidia/nemotron-3.5-lightning:free,google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free",
+    ).split(",")
+    if m.strip()
+]
 PAID_MODEL = os.getenv("PAID_MODEL", "anthropic/claude-haiku-5.5")
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "anthropic/claude-sonnet-5.5")
 REQUEST_TIMEOUT_S = float(os.getenv("REQUEST_TIMEOUT_S", "60"))
@@ -83,8 +101,18 @@ def call_llm(state: dict, node: str, prompt: str, temperature: float = 0.2) -> t
     extended usage_log and the running token_usage total -- merge it into the
     node's return dict.
     """
-    model_name = state.get("model") or DEFAULT_MODEL
-    response = get_chat_model(model_name, temperature).invoke(prompt)
+    requested = state.get("model") or DEFAULT_MODEL
+    candidates = [requested]
+    if requested.endswith(":free"):
+        candidates += [m for m in FREE_FALLBACKS if m != requested]
+
+    for i, model_name in enumerate(candidates):
+        try:
+            response = get_chat_model(model_name, temperature).invoke(prompt)
+            break
+        except openai.RateLimitError:
+            if i == len(candidates) - 1:
+                raise
     usage = extract_usage(response)
 
     usage_log = list(state.get("usage_log") or [])
