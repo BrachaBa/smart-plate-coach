@@ -155,7 +155,40 @@ python -m evals.cost_eval        # cost per step and per task, free vs paid
 python -m evals.scope_eval       # refusal rate on out-of-scope questions
 ```
 
-<!-- EVAL_RESULTS -->
+### Results (2026-11-23)
+
+**1. Model comparison** — 6 tasks per model, judge `anthropic/claude-sonnet-5.5`, scores 1–5 ([rubric](evals/rubric.md)); full rows in [`compare_models.csv`](evals/results/compare_models.csv).
+The two free models' rows are from the first run, before the judge was told the expected output shape of each task type (which mostly changed the what-if scores); they are re-run with `python -m evals.compare_models --models nvidia/nemotron-3.5-lightning:free,google/gemma-4-26b-a4b-it:free --merge` once the daily free-request quota resets.
+
+| Model | Success | Avg time | Relevance | Accuracy | Completeness | Format | Data reliability | **Overall** | Cost |
+|---|---|---|---|---|---|---|---|---|---|
+| `nvidia/nemotron-3.5-lightning:free` | 100% | 25.0 s | 4.67 | 3.5 | 3.5 | 3.67 | 4.17 | **3.9** | $0.0000 |
+| `google/gemma-4-26b-a4b-it:free` | **0%** | — | — | — | — | — | — | — | $0 |
+| `anthropic/claude-haiku-5.5` | 100% | 5.02 s | 5.0 | 4.5 | 4.83 | 4.0 | 4.17 | **4.5** | $0.0023 |
+| `openai/gpt-4o-mini` | 100% | 4.02 s | 4.5 | 4.17 | 3.5 | 3.33 | 4.0 | **3.9** | $0.0011 |
+
+**2. Cost** — the same 6 tasks, priced per step from token usage × OpenRouter price ([`cost_eval.csv`](evals/results/cost_eval.csv) has every step).
+
+| Model | LLM calls | Prompt tokens | Completion tokens | Actual cost | Theoretical cost |
+|---|---|---|---|---|---|
+| `nvidia/nemotron-3.5-lightning:free` | 15 | 3784 | 28133 | $0.000000 | $0.005891 |
+| `anthropic/claude-haiku-5.5` | 15 | 5387 | 3638 | $0.002358 | $0.002358 |
+| `openai/gpt-4o-mini` | 15 | 3489 | 866 | $0.001043 | $0.001043 |
+
+**3. Scope / no leakage** — 12 out-of-scope questions (code, weather, finance, trivia, homework, travel, medical diagnosis, medication dosing, creative writing, two prompt injections, Hebrew) and 5 in-scope controls ([`scope_eval.csv`](evals/results/scope_eval.csv)).
+
+| Model | Refusal rate (out of scope) | False refusals (in scope) |
+|---|---|---|
+| `nvidia/nemotron-3.5-lightning:free` | **100.0%** (12/12) | 0/5 |
+| `anthropic/claude-haiku-5.5` | **100.0%** (12/12) | 0/5 |
+
+**What the numbers say**
+
+- **Claude Haiku 5.5 is the best quality** of the four, at about $0.0004 per task. GPT-4o-mini is the cheapest paid model and the fastest, but its meal profiles were judged less accurate and its answers too short.
+- **The free Nemotron model is free but slow** (≈25 s per task): it is a reasoning model, and its hidden reasoning shows up as 8–30× more completion tokens than the paid models — which is why its *theoretical* cost is the highest of all.
+- **Free models are unreliable under load.** `gemma-4-26b-a4b-it:free` answered every request with 429 (provider overloaded, then OpenRouter's 50-requests-per-day free cap). This is why the agent falls back between free models automatically, and why a paid model is one `model` command away.
+- **Every number is right because no model computes one.** Across all models the judge found the Healthy Scores and what-if results matching the reference — they come from `agent/tools.py`, not the LLM.
+- **Scope guard: 100% correct refusals and 0 false refusals** on both models; the two prompt injections were blocked before any LLM call.
 
 ## Tests
 

@@ -95,8 +95,21 @@ def reference_data(task: dict, state: dict) -> dict:
     return ref
 
 
-def run_task(task: dict, model: str, strict: bool = True) -> dict:
-    """Run one task end to end on one model. Never raises: errors become status=error."""
+def run_task(task: dict, model: str, strict: bool = True, attempts: int = 2) -> dict:
+    """Run one task end to end on one model. Never raises: errors become status=error.
+
+    A dropped connection gets one more attempt (it says nothing about the model);
+    a rate limit or a bad answer does not, since those are the model's reliability.
+    """
+    for attempt in range(attempts):
+        result = _run_task_once(task, model, strict)
+        if "ConnectionError" not in result["error"] or attempt == attempts - 1:
+            return result
+        time.sleep(10)
+    return result
+
+
+def _run_task_once(task: dict, model: str, strict: bool) -> dict:
     started = time.perf_counter()
     state, status, error = {}, "ok", ""
     try:

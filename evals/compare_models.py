@@ -13,13 +13,35 @@ evals/results/compare_models_summary.csv (per-model averages).
 """
 
 import argparse
+import csv
 import json
 import statistics
 from pathlib import Path
 
 from agent.llm import DEFAULT_MODEL, JUDGE_MODEL, PAID_MODEL, call_llm
 from agent.nodes import _parse_json_response
-from evals.common import TASKS, progress, reference_data, run_task, write_csv
+from evals.common import RESULTS_DIR, TASKS, progress, reference_data, run_task, write_csv
+
+# What a correct output looks like for each task kind, so the judge grades it
+# against the agent's actual contract (e.g. a what-if is a structured,
+# code-computed before/after, not prose).
+EXPECTED_SHAPE = {
+    "analysis": (
+        "Analyze a meal photo of {food} for a user whose goal is {goal}. Expected output: the "
+        "dish, a Healthy Score computed by code, a short qualitative nutrition profile, and "
+        "2-4 short, soft, number-free suggestions, each with a projected score computed by code."
+    ),
+    "question": (
+        "Answer the user's nutrition question: \"{query}\". Expected output: a direct 2-5 "
+        "sentence answer grounded in the reference records."
+    ),
+    "whatif": (
+        "What-if simulation on a meal of {food}. User asked: \"{query}\". Expected output, by "
+        "design a structured result rather than prose: the change the LLM parsed from the "
+        "question (action/food/replacement), and the before/after Healthy Score and calories "
+        "computed by code. Grade the parse and whether the numbers match the reference."
+    ),
+}
 
 RUBRIC = (Path(__file__).resolve().parent / "rubric.md").read_text(encoding="utf-8")
 CRITERIA = ["relevance", "factual_accuracy", "completeness", "format", "data_reliability"]
@@ -45,7 +67,7 @@ Return ONLY the JSON object described under "Judge output format", nothing else.
 
 
 def judge(task: dict, text: str, reference: dict) -> dict:
-    description = task.get("query") or f"Analyze a meal photo of {task['food']} for a user whose goal is {task.get('goal')}."
+    description = EXPECTED_SHAPE[task["kind"]].format(**task)
     prompt = JUDGE_PROMPT.format(
         rubric=RUBRIC, task=description, reference=json.dumps(reference, indent=1), output=text or "(empty)"
     )
@@ -58,9 +80,23 @@ def judge(task: dict, text: str, reference: dict) -> dict:
     return result
 
 
-def run(models: list[str], repeats: int) -> None:
+def _load_previous(models: list[str]) -> list[dict]:
+    """Rows of an earlier run for models *not* in this run (for --merge)."""
+    path = RESULTS_DIR / "compare_models.csv"
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        return [r for r in csv.DictReader(f) if r["model"] not in models]
+
+
+def _num(value):
+    return float(value) if value not in (None, "") else None
+
+
+def run(models: list[str], repeats: int, merge: bool = False) -> None:
     if JUDGE_MODEL in models:
         raise SystemExit(f"The judge ({JUDGE_MODEL}) must not be one of the compared models.")
+    previous = _load_previous(models) if merge else []
     rows = []
     for model in models:
         for task in TASKS:
@@ -90,19 +126,20 @@ def run(models: list[str], repeats: int) -> None:
                 row["output"] = result["text"].replace("\n", " | ")[:600]
                 rows.append(row)
 
+    rows = previous + rows
     summary = []
-    for model in models:
+    for model in dict.fromkeys(r["model"] for r in rows):
         mine = [r for r in rows if r["model"] == model]
         ok = [r for r in mine if r["status"] == "ok"]
-        judged = [r for r in ok if "overall" in r]
+        judged = [r for r in ok if _num(r.get("overall")) is not None]
         entry = {
             "model": model,
             "runs": len(mine),
             "success_rate_pct": round(100 * len(ok) / len(mine), 1) if mine else 0,
-            "avg_latency_s": round(statistics.mean(r["latency_s"] for r in ok), 2) if ok else "",
+            "avg_latency_s": round(statistics.mean(_num(r["latency_s"]) for r in ok), 2) if ok else "",
         }
         for c in CRITERIA + ["overall"]:
-            entry[f"avg_{c}"] = round(statistics.mean(r[c] for r in judged), 2) if judged else ""
+            entry[f"avg_{c}"] = round(statistics.mean(_num(r[c]) for r in judged), 2) if judged else ""
         entry["total_cost_usd"] = f"{sum(float(r['cost_usd']) for r in mine):.6f}"
         entry["total_theoretical_cost_usd"] = f"{sum(float(r['theoretical_cost_usd']) for r in mine):.6f}"
         entry["judge_model"] = JUDGE_MODEL
@@ -122,5 +159,7 @@ if __name__ == "__main__":
         default=f"{DEFAULT_MODEL},google/gemma-4-26b-a4b-it:free,{PAID_MODEL},openai/gpt-4o-mini",
     )
     parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument("--merge", action="store_true",
+                        help="keep the earlier results of models not in --models (e.g. re-run only some)")
     args = parser.parse_args()
-    run([m.strip() for m in args.models.split(",") if m.strip()], args.repeats)
+    run([m.strip() for m in args.models.split(",") if m.strip()], args.repeats, args.merge)
