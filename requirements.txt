@@ -1,6 +1,6 @@
-# Agent runtime (Part ב') -- everything `python -m agent.cli`, the evals and
+# Agent runtime (Part B) -- everything `python -m agent.cli`, the evals and
 # agent.exe need. The vision classifier runs through onnxruntime, so torch is
-# NOT needed here. Training the model (Part א') uses requirements-vision.txt.
+# NOT needed here. Training the model (Part A) uses requirements-vision.txt.
 langgraph
 langchain-openai
 langchain-core

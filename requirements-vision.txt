@@ -1,4 +1,4 @@
-# Part א' -- training the vision model and exporting it to ONNX
+# Part A -- training the vision model and exporting it to ONNX
 # (python -m vision.train / vision.ablation / scripts.export_onnx).
 -r requirements.txt
 torch
