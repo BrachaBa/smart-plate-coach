@@ -105,9 +105,9 @@ rather than an outright block.
 
 ## Where the code lives, mapped to the concepts above
 
-- `agent/vision_model.py` — loads the Part א׳ checkpoint (`vision/checkpoints/config4_full.pt`)
-  and classifies a photo; reuses `vision/vision_model.py`'s architecture/transforms and
-  `vision/train.py`'s device detection as-is.
+- `agent/vision_model.py` — runs the Part א׳ classifier, exported to ONNX (`agent/models/food_classifier.onnx`)
+  with `onnxruntime`, and reproduces EfficientNet-B0's preprocessing in NumPy, so the agent
+  needs no torch at runtime (predictions match the PyTorch checkpoint to ~1e-7).
 - `agent/tools.py` — RAG lookup, profile aggregation, and the two Code-Exec functions
   (`compute_healthy_score`, `compute_delta`).
 - `agent/nodes.py` — all 10 graph nodes plus the scope guard and the JSON-parsing helpers

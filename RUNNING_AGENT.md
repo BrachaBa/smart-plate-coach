@@ -8,9 +8,9 @@ source venv/bin/activate
 
 ## 0. Prerequisites
 
-- The vision model must already be trained: `vision/checkpoints/config4_full.pt` must exist
-  (see `TRAINING.md` — specifically the ablation step, config 4). The agent's vision intake
-  node loads this checkpoint directly and will raise `FileNotFoundError` if it's missing.
+- Nothing to train: the classifier ships as `agent/models/food_classifier.onnx` and runs with
+  `onnxruntime` (no torch). It was exported from `vision/checkpoints/config4_full.pt` by
+  `python -m scripts.export_onnx`; re-run that only if you retrain the model.
 - An OpenRouter API key. Sign up at [openrouter.ai](https://openrouter.ai), generate a key,
   and put it in `.env`:
 
@@ -113,10 +113,10 @@ changes over time. Pick a current one from
 [openrouter.ai/models?max_price=0](https://openrouter.ai/models?max_price=0) and update
 `DEFAULT_MODEL`/`JUDGE_MODEL` in `.env`.
 
-**`FileNotFoundError: Vision checkpoint not found at .../config4_full.pt`**
+**`FileNotFoundError: Vision model not found at .../food_classifier.onnx`**
 
-Run the vision training pipeline first — see `TRAINING.md`, specifically
-`python -u -m vision.ablation` (config 4 is the full pipeline checkpoint the agent loads).
+The ONNX file is missing from your checkout. Pull it again, or regenerate it from a trained
+checkpoint: `pip install -r requirements-vision.txt && python -m scripts.export_onnx`.
 
 **A suggestion shows no `projected:` score**
 

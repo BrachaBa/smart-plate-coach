@@ -51,7 +51,8 @@ requirements.txt
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt          # agent only
+# pip install -r requirements-vision.txt # + training the vision model (torch)
 cp .env.example .env   # then fill in OPENROUTER_API_KEY
 ```
 
@@ -74,7 +75,8 @@ python -m vision.train
 python -m agent.cli
 ```
 
-Requires `vision/checkpoints/config4_full.pt` to already exist (see Training above) and
+The trained classifier ships in the repo as `agent/models/food_classifier.onnx` (exported from
+`config4_full.pt` by `python -m scripts.export_onnx`), so no training is needed. It needs
 `OPENROUTER_API_KEY` set in `.env`. See `RUNNING_AGENT.md` for a full walkthrough and
 troubleshooting (including an SSL note relevant to networks with a TLS-intercepting proxy).
 

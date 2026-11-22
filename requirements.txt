@@ -1,19 +1,6 @@
-torch
-torchvision
-numpy
-pandas
-matplotlib
-seaborn
-scikit-learn
-Pillow
-kaggle
-opencv-python
-jupyter
-ipykernel
-notebook
-imagehash
-
-# Agent (Part ב') — LangGraph + OpenRouter
+# Agent runtime (Part ב') -- everything `python -m agent.cli`, the evals and
+# agent.exe need. The vision classifier runs through onnxruntime, so torch is
+# NOT needed here. Training the model (Part א') uses requirements-vision.txt.
 langgraph
 langchain-openai
 langchain-core
@@ -21,3 +8,7 @@ openai
 langsmith
 python-dotenv
 truststore
+httpx
+numpy
+Pillow
+onnxruntime

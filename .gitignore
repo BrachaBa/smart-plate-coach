@@ -4,4 +4,7 @@ logs/
 __pycache__/
 *.pyc
 vision/checkpoints/
-.env
+.envbuild/
+dist/
+plate_coach_summary*.txt
+plate_coach_history.json
