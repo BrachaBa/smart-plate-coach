@@ -103,7 +103,7 @@ def call_llm(state: dict, node: str, prompt: str, temperature: float = 0.2) -> t
     """
     requested = state.get("model") or DEFAULT_MODEL
     candidates = [requested]
-    if requested.endswith(":free"):
+    if requested.endswith(":free") and not state.get("strict_model"):
         candidates += [m for m in FREE_FALLBACKS if m != requested]
 
     for i, model_name in enumerate(candidates):

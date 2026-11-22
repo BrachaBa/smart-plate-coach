@@ -17,6 +17,7 @@ class PlateCoachState(TypedDict, total=False):
     goal: str  # "weight_loss" | "maintain" | "balanced" | "muscle_gain"
     user_query: str  # free-text question / what-if, checked by scope_guard
     model: str | None  # OpenRouter model for this run (None -> DEFAULT_MODEL); evals vary it
+    strict_model: bool  # evals: no free-model fallback, so the named model really answered
     save_history: bool  # offer to save the analyzed meal (HITL) at the end of the run
 
     # --- scope guard ---

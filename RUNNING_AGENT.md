@@ -42,10 +42,9 @@ At the `plate-coach>` prompt, give a path to a local image:
 plate-coach> data/food41/images/sushi/100332.jpg
 ```
 
-You'll see the graph's progress streamed node-by-node:
+You'll see the graph's progress streamed node-by-node, as each node starts:
 
 ```text
-[INFO] Entering Node: scope_guard...
 [INFO] Entering Node: vision_intake...
 [INFO] Entering Node: input_gate...
 [INFO] Entering Node: nutrition_analysis...
@@ -53,22 +52,22 @@ You'll see the graph's progress streamed node-by-node:
 [INFO] Entering Node: improvement_planner...
 [INFO] Entering Node: goal_adjuster...
 [INFO] Entering Node: evaluator...
+[INFO] Entering Node: propose_save...
 [INFO] Entering Node: hitl_gate...
 
-Healthy Score: 66/100
-Breakdown: {'protein': 60, 'veg': 15, 'carbs': 100, 'sugar': 70, 'sat_fat': 92}
-Profile: protein: moderate, carbs: high, veg: low, sugar: moderate
-
-Suggestions:
-  - Add a side of steamed broccoli or mixed vegetables (...) (projected: 73/100)
-  - ...
-
-This is general lifestyle information only, not professional medical or dietary advice. ...
-[cost] 506 prompt + 166 completion tokens (~$0.0000, theoretical $0.0040)
+[HITL] The agent wants to save this meal (sushi, score 66) to your meal history:
+       C:\...\plate_coach_history.json
+Proceed? [Y/N]: y
+[INFO] Resuming Node: hitl_gate (approved)...
 ```
 
-If the image can't be classified confidently, the input gate will say so and ask for a
-clearer photo instead of guessing.
+Then the result -- the identified dish, the Healthy Score with its breakdown, a qualitative
+profile, 2-4 suggestions each with the projected score computed by code, the disclaimer -- and a
+per-node cost table (`[COST]`) with the actual and the theoretical cost.
+
+If the image can't be classified confidently, the input gate says so (with its best guesses)
+and asks for a clearer photo instead of guessing. Answering `N` at the `[HITL]` prompt saves
+nothing.
 
 ## 3. Ask "what if" questions
 
@@ -76,22 +75,30 @@ Right after an analysis, you're dropped into a what-if loop:
 
 ```text
 what-if> what if I add a side salad
+[INFO] Entering Node: scope_guard...
+[INFO] Entering Node: simulation_handler...
   Before: score 66, 375.0 kcal
   After:  score 73, 412.5 kcal
-  Delta:  {'score': 7, 'calories': 37.5, 'protein_g': 2.2, 'carbs_g': 6.0, 'sugar_g': 3.0, 'saturated_fat_g': 0.0}
+  Change: score +7, calories +37.5, protein +2.2 g, sugar +3.0 g
 ```
 
-Press Enter on a blank line to return to the main prompt, or type `quit`/`exit` to leave
-Plate Coach entirely from within the what-if loop. Off-topic questions asked here are refused
-the same way they would be at the main prompt.
+Press Enter on a blank line to return to the main prompt, or type `quit`/`exit` to leave.
+Off-topic questions asked here are refused the same way as at the main prompt.
 
-## 4. Other commands
+## 4. Questions and other commands
+
+Any text that is not a command or an image path is treated as a nutrition question
+(`how much protein is in sushi?`). It goes through the scope guard first; an off-topic or
+prompt-injection request is refused.
 
 ```text
-help  or  ?          Show usage help
-history               Enter up to 20 meal-photo paths for a weekly trend summary
-export-summary        Write the last analysis's final output to plate_coach_summary.txt
-quit  or  exit         Exit
+history          Up to 20 photo paths (or Enter to use your saved meals) -> trend summary
+export-summary   Save a summary of the conversation to plate_coach_summary_<time>.txt ([Y/N] first)
+model [name]     Show or switch the OpenRouter model (e.g. model openai/gpt-4o-mini)
+status           Model, API key and LangSmith tracing status
+cost             Session total tokens and cost
+help  or  ?      Show usage help
+quit  or  exit   Exit
 ```
 
 ## Troubleshooting
@@ -106,7 +113,13 @@ be missing an X.509 extension that Python 3.13+'s stricter verification requires
 `certifi`'s bundled one. If you still see this error, confirm `truststore` is installed
 (`pip show truststore`) and that you're on a reasonably current OS trust store.
 
-**`openai.NotFoundError: ... model is unavailable for free ... use this slug instead`**
+**`[ERROR] Rate limit reached ...`**
+
+Free models are often rate-limited upstream. The agent already falls back to the next model in
+`FREE_FALLBACK_MODELS`; if all of them are busy, wait a minute or switch to a paid model
+(`model openai/gpt-4o-mini`).
+
+**`[ERROR] OpenRouter does not know the model ...`**
 
 The free-tier model slug in `.env` is no longer valid — OpenRouter's free model catalog
 changes over time. Pick a current one from
