@@ -8,3 +8,6 @@ vision/checkpoints/
 dist/
 plate_coach_summary*.txt
 plate_coach_history.json
+.pricing_cache.json
+plate_coach_error.log
+.pytest_cache/

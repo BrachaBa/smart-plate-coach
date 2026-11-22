@@ -2,29 +2,44 @@
 
 OpenRouter exposes an OpenAI-compatible API, so we use langchain_openai.ChatOpenAI
 pointed at OpenRouter's base URL rather than a bespoke client. Model names are
-configurable via .env / environment variables with sensible free+paid placeholder
-defaults -- see .env.example. Swap the real model names in later; nothing here
-should need to change when you do.
+configurable via .env / environment variables -- see .env.example.
+
+Every LLM call in the agent goes through call_llm(), which records one entry per
+call in the state's usage_log ({node, model, prompt_tokens, completion_tokens}).
+That log is what the CLI's cost summary and evals/cost_eval.py price per step.
 """
 
 import os
 import ssl
+import sys
+from pathlib import Path
 
 import httpx
 import truststore
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-load_dotenv()
+
+def _load_env():
+    """Load .env from the working directory, and -- for agent.exe -- from the
+    folder the exe sits in, so a user can drop their .env next to the exe."""
+    load_dotenv()
+    if getattr(sys, "frozen", False):
+        load_dotenv(Path(sys.executable).resolve().parent / ".env")
+
+
+_load_env()
 
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
-# Placeholder defaults: one free-tier model, one paid model (used e.g. by the cost eval,
-# which the spec requires to include at least one paid model in its comparison).
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
-PAID_MODEL = os.getenv("PAID_MODEL", "anthropic/claude-3.5-sonnet")
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", DEFAULT_MODEL)
+# One free-tier model for everyday use, one paid model (the cost eval must include
+# a paid one), and a fixed judge for LLM-as-judge (kept separate from the models
+# under test, so no model grades its own answers).
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "google/gemma-4-26b-a4b-it:free")
+PAID_MODEL = os.getenv("PAID_MODEL", "anthropic/claude-haiku-5.5")
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "anthropic/claude-sonnet-5.5")
+REQUEST_TIMEOUT_S = float(os.getenv("REQUEST_TIMEOUT_S", "60"))
 
 
 def _build_http_client() -> httpx.Client:
@@ -35,17 +50,19 @@ def _build_http_client() -> httpx.Client:
     -- the OS trust store handles both cases the same way the browser/curl already
     do on that machine, with no bundled certs or verification flags to hardcode."""
     ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    return httpx.Client(verify=ctx)
+    return httpx.Client(verify=ctx, timeout=REQUEST_TIMEOUT_S)
 
 
 def get_chat_model(model: str | None = None, temperature: float = 0.2) -> ChatOpenAI:
     """Build a ChatOpenAI client pointed at OpenRouter for the given model name."""
     return ChatOpenAI(
         model=model or DEFAULT_MODEL,
-        api_key=OPENROUTER_API_KEY,
+        api_key=OPENROUTER_API_KEY or "missing",
         base_url=OPENROUTER_BASE_URL,
         http_client=_build_http_client(),
         temperature=temperature,
+        max_retries=2,
+        default_headers={"X-Title": "Plate Coach"},
     )
 
 
@@ -57,3 +74,23 @@ def extract_usage(response) -> dict:
         "prompt_tokens": usage.get("input_tokens", 0),
         "completion_tokens": usage.get("output_tokens", 0),
     }
+
+
+def call_llm(state: dict, node: str, prompt: str, temperature: float = 0.2) -> tuple[str, dict]:
+    """Invoke the state's model (or DEFAULT_MODEL) and log the call's token usage.
+
+    Returns (response_text, state_update) where state_update carries the
+    extended usage_log and the running token_usage total -- merge it into the
+    node's return dict.
+    """
+    model_name = state.get("model") or DEFAULT_MODEL
+    response = get_chat_model(model_name, temperature).invoke(prompt)
+    usage = extract_usage(response)
+
+    usage_log = list(state.get("usage_log") or [])
+    usage_log.append({"node": node, "model": model_name, **usage})
+    total = {
+        "prompt_tokens": sum(e["prompt_tokens"] for e in usage_log),
+        "completion_tokens": sum(e["completion_tokens"] for e in usage_log),
+    }
+    return str(response.content), {"usage_log": usage_log, "token_usage": total}
