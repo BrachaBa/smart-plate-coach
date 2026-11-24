@@ -35,8 +35,13 @@ def find_prescriptive_language(text: str) -> list:
 def rewrite_prescriptive_language(text: str) -> str:
     """Replace binding/diagnostic phrasing with softer, non-prescriptive wording."""
     for pattern, replacement in _PRESCRIPTIVE_PATTERNS:
-        text = pattern.sub(replacement, text)
+        text = pattern.sub(lambda m, r=replacement: r[0].upper() + r[1:] if m.group(0)[0].isupper() else r, text)
     return text
+
+
+def _sentence_case(text: str) -> str:
+    text = text.strip()
+    return text[:1].upper() + text[1:]
 
 
 def apply_guardrails(final_output: dict) -> dict:
@@ -52,7 +57,7 @@ def apply_guardrails(final_output: dict) -> dict:
     output = dict(final_output)
     if "suggestions" in output:
         output["suggestions"] = [
-            {**s, "text": rewrite_prescriptive_language(s["text"])} for s in output["suggestions"]
+            {**s, "text": _sentence_case(rewrite_prescriptive_language(s["text"]))} for s in output["suggestions"]
         ]
     if "message" in output:
         output["message"] = rewrite_prescriptive_language(output["message"])
@@ -61,3 +66,26 @@ def apply_guardrails(final_output: dict) -> dict:
 
     output["disclaimer"] = DISCLAIMER
     return output
+
+
+# Deterministic security block, checked before any LLM sees the input: attempts
+# to override the agent's instructions or extract its prompt are refused outright.
+_INJECTION_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"\bignore (all |any |the )?(previous|prior|above|earlier) (instructions|rules|prompts?)",
+        r"\bdisregard (all |any |the )?(previous|prior|above|your) (instructions|rules)",
+        r"\b(reveal|show|print|repeat) (me )?(your|the) (system )?(prompt|instructions)",
+        r"\byou are now\b",
+        r"\bact as (?!a nutrition)",
+        r"\bpretend (to be|you are)\b",
+        r"\bjailbreak\b|\bDAN mode\b",
+        r"\bdeveloper mode\b",
+        r"<\s*/?\s*(system|user_input|question)\s*>",
+    )
+]
+
+
+def detect_prompt_injection(text: str) -> bool:
+    """True if the text tries to override instructions (prompt-injection guardrail)."""
+    return any(p.search(text or "") for p in _INJECTION_PATTERNS)

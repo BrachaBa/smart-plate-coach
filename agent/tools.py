@@ -12,6 +12,8 @@ from functools import lru_cache
 from pathlib import Path
 
 NUTRITION_DB_PATH = Path(__file__).resolve().parent / "data" / "nutrition_facts.json"
+# Approved writes land in the working directory (next to agent.exe when run there).
+HISTORY_PATH = Path("plate_coach_history.json")
 
 # Per-meal reference thresholds used by the scoring formula below. These are general
 # per-meal guidance figures, not a personalized medical/caloric prescription -- the
@@ -44,9 +46,24 @@ _NEUTRAL_DEFAULT = {
 }
 
 
+_ARTICLES = ("a ", "an ", "the ", "some ", "extra ", "more ")
+
+
+def normalize_food_name(name: str) -> str:
+    """Canonical lookup key: lowercase, articles dropped, spaces/hyphens -> underscores.
+
+    "A Side Salad" -> "side_salad", "french-fries" -> "french_fries".
+    """
+    key = (name or "").lower().strip()
+    for article in _ARTICLES:
+        if key.startswith(article):
+            key = key[len(article):]
+    return "_".join(key.replace("-", " ").split())
+
+
 @lru_cache(maxsize=1)
 def load_nutrition_db(path: Path = NUTRITION_DB_PATH) -> dict:
-    """Load the nutrition-facts JSON once per process, keyed by lowercase name and alias.
+    """Load the nutrition-facts JSON once per process, keyed by normalized name and alias.
 
     Multiple keys (name + every alias) point at the same record dict.
     """
@@ -55,34 +72,42 @@ def load_nutrition_db(path: Path = NUTRITION_DB_PATH) -> dict:
 
     db = {}
     for record in records:
-        db[record["name"].lower()] = record
+        db[normalize_food_name(record["name"])] = record
         for alias in record.get("aliases", []):
-            db[alias.lower()] = record
+            db[normalize_food_name(alias)] = record
     return db
 
 
+def find_food(name: str) -> dict | None:
+    """Exact lookup on the normalized name, also trying the singular form.
+
+    Deliberately no substring matching: "apple_pie" used to match "apple" (the
+    fruit) and silently score a pie as fruit. A food that is not in the table is
+    reported as unmatched instead of being matched to something it merely contains.
+    """
+    db = load_nutrition_db()
+    key = normalize_food_name(name)
+    if key in db:
+        return db[key]
+    if key.endswith("es") and key[:-2] in db:
+        return db[key[:-2]]
+    if key.endswith("s") and key[:-1] in db:
+        return db[key[:-1]]
+    return None
+
+
 def lookup_nutrition(food_names: list) -> dict:
-    """Resolve a list of food names to nutrition records via exact match, falling
-    back to a substring match, on the RAG database.
+    """Resolve a list of food names to nutrition records (the RAG retrieval step).
 
     Returns {"matched": [{"query": str, **record}], "unmatched": [str, ...]}.
     Unmatched foods get a neutral default profile merged in (flagged via
     "is_default": True) rather than the LLM inventing plausible-looking numbers.
     """
-    db = load_nutrition_db()
     matched = []
     unmatched = []
 
     for query in food_names:
-        key = query.lower().strip()
-        record = db.get(key)
-
-        if record is None:
-            for db_key, db_record in db.items():
-                if key in db_key or db_key in key:
-                    record = db_record
-                    break
-
+        record = find_food(query)
         if record is not None:
             matched.append({"query": query, "is_default": False, **record})
         else:
@@ -107,13 +132,16 @@ def aggregate_profile(matched_records: list, portion_size: str = "medium") -> di
         serving_scale = record.get("serving_g", 200) / 100.0
         for field in _MACRO_FIELDS:
             totals[field] += record.get(field, 0.0) * serving_scale
-        veg_scores.append(record.get("veg_score", 0.0))
+        # Drinks carry nutrients (a soda's sugar counts) but are not part of the
+        # plate: averaging water's veg_score of 0 in made "add water" lower the score.
+        if not record.get("is_drink"):
+            veg_scores.append(record.get("veg_score", 0.0))
 
     for field in _MACRO_FIELDS:
         totals[field] *= multiplier
 
     totals["calories"] = totals.pop("calories_per_100g")
-    totals["veg_score"] = sum(veg_scores) / len(veg_scores)
+    totals["veg_score"] = sum(veg_scores) / len(veg_scores) if veg_scores else 0.0
     return totals
 
 
@@ -194,18 +222,101 @@ def compute_delta(meal_records: list, change: dict, portion_size: str = "medium"
     before_summary = _profile_summary(before_profile, compute_healthy_score(before_profile))
 
     action = change.get("action")
-    food = (change.get("food") or "").lower()
+    food = change.get("food") or ""
     replacement = change.get("replacement")
 
     after_records = list(meal_records)
     if action in ("remove", "swap") and food:
-        after_records = [r for r in after_records if r.get("query", r.get("name", "")).lower() != food]
+        after_records = [r for r in after_records if not same_food(food, r)]
+    used_default = False
     if action in ("add", "swap") and replacement:
-        after_records.append(lookup_nutrition([replacement])["matched"][0])
+        added = lookup_nutrition([replacement])["matched"][0]
+        used_default = added["is_default"]
+        after_records.append(added)
+
+    # A change that leaves no food on the plate (removing the only dish, or
+    # swapping it for a drink) has no meaningful score: an empty profile scores
+    # 55 from the absence of penalties alone. Callers show no number for it.
+    empty_plate = not any(not r.get("is_drink") for r in after_records)
 
     after_profile = aggregate_profile(after_records, portion_size)
     after_summary = _profile_summary(after_profile, compute_healthy_score(after_profile))
 
     delta = {key: round(after_summary[key] - before_summary[key], 1) for key in before_summary}
 
-    return {"before": before_summary, "after": after_summary, "delta": delta}
+    # used_default: the added food is not in the database, so "after" rests on the
+    # neutral default profile -- callers show no projected number in that case.
+    return {
+        "before": before_summary,
+        "after": after_summary,
+        "delta": delta,
+        "used_default": used_default,
+        "empty_plate": empty_plate,
+    }
+
+
+def same_food(name: str, record: dict) -> bool:
+    """Does `name` refer to the food in `record`?
+
+    Resolved through the database (aliases and plurals included), so "fries"
+    and "hot dogs" match the meal's french_fries / hot_dog records; falls back
+    to comparing normalized names for a food that is not in the database.
+    """
+    found = find_food(name)
+    if found is not None and not record.get("is_default"):
+        return found["name"] == record.get("name")
+    key = normalize_food_name(name)
+    return key in (normalize_food_name(record.get("query", "")), normalize_food_name(record.get("name", "")))
+
+
+def find_foods_in_text(text: str) -> list:
+    """Retrieval for free-text questions: every database food (name or alias)
+    that appears in the text as whole words, longest match first, so
+    "chocolate cake" wins over a bare "cake"-like alias."""
+    db = load_nutrition_db()
+    normalized = "_" + normalize_food_name(text.replace("?", " ").replace(",", " ").replace(".", " ")) + "_"
+    found, taken = [], []
+    for key in sorted(db, key=len, reverse=True):
+        # also accept plural forms ("donuts" for "donut", "tomatoes" for "tomato")
+        for needle in (f"_{key}_", f"_{key}s_", f"_{key}es_"):
+            start = normalized.find(needle)
+            if start != -1:
+                break
+        if start == -1:
+            continue
+        span = (start, start + len(needle))
+        if any(a < span[1] and span[0] < b for a, b in taken):
+            continue
+        taken.append(span)
+        name = db[key]["name"]
+        if name not in found:
+            found.append(name)
+    return found
+
+
+def perform_write(pending_write: dict) -> Path:
+    """Execute an approved write (called only from the HITL node, after a yes).
+
+    pending_write: {"target": str, "mode": "append_json" | "text", "content": ...}
+    """
+    target = Path(pending_write["target"]).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if pending_write.get("mode") == "append_json":
+        entries = []
+        if target.exists():
+            # Never overwrite a history file we cannot read: a hand-edited file
+            # with one bad comma would otherwise lose every saved meal.
+            try:
+                entries = json.loads(target.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"{target} is not valid JSON ({exc}); nothing was written. "
+                    "Fix the file or move it away, then save again."
+                ) from exc
+            if not isinstance(entries, list):
+                raise ValueError(f"{target} does not contain a list of meals; nothing was written.")
+        entries.append(pending_write["content"])
+        target.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
+    else:
+        target.write_text(str(pending_write["content"]), encoding="utf-8")
+    return target.resolve()

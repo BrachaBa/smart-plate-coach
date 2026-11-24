@@ -1,0 +1,61 @@
+{
+  "name": "Plate Coach Agent",
+  "version": "1.0.0",
+  "description": "A single-purpose nutrition agent: it identifies the dish in a meal photo with a fine-tuned EfficientNet-B0 classifier, retrieves its nutrition facts, computes a deterministic 0-100 Healthy Score, and proposes small improvements whose projected scores are computed by code, never guessed by the LLM. It answers nutrition and what-if questions about meals and refuses anything outside that scope. General lifestyle information only, not medical advice.",
+  "creator_name": "Bracha Babian, Rachel Israeli",
+  "contact_information": "https://github.com/BrachaBa, https://github.com/rachelisraeli",
+  "release_date": "2026-11-22",
+  "repository_url": "https://github.com/BrachaBa/smart-plate-coach",
+  "download_url": "https://github.com/BrachaBa/smart-plate-coach/releases/download/v1.0.0/agent.exe",
+  "target_audience": "Health-conscious adults, people tracking their eating habits, nutrition students",
+  "professional_fields": [
+    "Nutrition",
+    "Healthy Lifestyle",
+    "Computer Vision",
+    "Food Analysis"
+  ],
+  "tasks_capable_of_performing": [
+    "Meal Photo Recognition (90 dish classes)",
+    "Nutrition Profile Lookup (RAG over a nutrition database)",
+    "Healthy Score Calculation (0-100, deterministic)",
+    "Meal Improvement Suggestions with Projected Scores",
+    "What-If Meal Simulations (add / remove / swap a food)",
+    "Weekly Meal Trend Summary (up to 20 photos)",
+    "Nutrition Questions about Foods",
+    "Conversation Summary Export"
+  ],
+  "examples_of_suitable_questions": [
+    "C:\\photos\\lunch.jpg",
+    "How much protein is in sushi?",
+    "Is pizza high in saturated fat compared to pho?",
+    "What if I add a side salad to this meal?",
+    "What is a healthier swap for french fries?"
+  ],
+  "technical_specifications": {
+    "framework": "LangGraph",
+    "llm_provider": "OpenRouter",
+    "supported_models": [
+      "nvidia/nemotron-3.5-lightning:free",
+      "anthropic/claude-haiku-5.5",
+      "openai/gpt-4o-mini",
+      "anthropic/claude-sonnet-5.5"
+    ],
+    "observability": "LangSmith",
+    "interface": "Interactive CLI (agent.exe)",
+    "features_enabled": {
+      "rag": true,
+      "web_search": false,
+      "code_execution": true,
+      "mcp_support": false,
+      "human_in_the_loop": true,
+      "guardrails": true,
+      "evaluator": true,
+      "streaming": true
+    },
+    "required_permissions": [
+      "local_file_read",
+      "local_file_write",
+      "network_access_openrouter"
+    ]
+  }
+}
