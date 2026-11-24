@@ -155,17 +155,16 @@ python -m evals.cost_eval        # cost per step and per task, free vs paid
 python -m evals.scope_eval       # refusal rate on out-of-scope questions
 ```
 
-### Results (2026-11-23)
+### Results (2026-11-24)
 
 **1. Model comparison** — 6 tasks per model, judge `anthropic/claude-sonnet-5.5`, scores 1–5 ([rubric](evals/rubric.md)); full rows in [`compare_models.csv`](evals/results/compare_models.csv).
-The two free models' rows are from the first run, before the judge was told the expected output shape of each task type (which mostly changed the what-if scores); they are re-run with `python -m evals.compare_models --models nvidia/nemotron-3.5-lightning:free,google/gemma-4-26b-a4b-it:free --merge` once the daily free-request quota resets.
 
 | Model | Success | Avg time | Relevance | Accuracy | Completeness | Format | Data reliability | **Overall** | Cost |
 |---|---|---|---|---|---|---|---|---|---|
-| `nvidia/nemotron-3.5-lightning:free` | 100% | 25.0 s | 4.67 | 3.5 | 3.5 | 3.67 | 4.17 | **3.9** | $0.0000 |
-| `google/gemma-4-26b-a4b-it:free` | **0%** | — | — | — | — | — | — | — | $0 |
 | `anthropic/claude-haiku-5.5` | 100% | 5.02 s | 5.0 | 4.5 | 4.83 | 4.0 | 4.17 | **4.5** | $0.0023 |
 | `openai/gpt-4o-mini` | 100% | 4.02 s | 4.5 | 4.17 | 3.5 | 3.33 | 4.0 | **3.9** | $0.0011 |
+| `nvidia/nemotron-3.5-lightning:free` | 100% | 31.91 s | 4.33 | 3.83 | 3.83 | 4.17 | 4.17 | **4.07** | $0.0000 |
+| `google/gemma-4-26b-a4b-it:free` | **0%** (429 on every call) | — | — | — | — | — | — | — | $0 |
 
 **2. Cost** — the same 6 tasks, priced per step from token usage × OpenRouter price ([`cost_eval.csv`](evals/results/cost_eval.csv) has every step).
 
@@ -185,8 +184,8 @@ The two free models' rows are from the first run, before the judge was told the 
 **What the numbers say**
 
 - **Claude Haiku 5.5 is the best quality** of the four, at about $0.0004 per task. GPT-4o-mini is the cheapest paid model and the fastest, but its meal profiles were judged less accurate and its answers too short.
-- **The free Nemotron model is free but slow** (≈25 s per task): it is a reasoning model, and its hidden reasoning shows up as 8–30× more completion tokens than the paid models — which is why its *theoretical* cost is the highest of all.
-- **Free models are unreliable under load.** `gemma-4-26b-a4b-it:free` answered every request with 429 (provider overloaded, then OpenRouter's 50-requests-per-day free cap). This is why the agent falls back between free models automatically, and why a paid model is one `model` command away.
+- **The free Nemotron model is free but slow** (≈32 s per task, up to 80 s for a meal analysis): it is a reasoning model, and its hidden reasoning shows up as 8–30× more completion tokens than the paid models — which is why its *theoretical* cost is the highest of all.
+- **Free models are unreliable under load.** `gemma-4-26b-a4b-it:free` answered every request with 429 on two separate days, even with the daily free quota untouched: its provider is overloaded. OpenRouter also caps free models at 50 requests a day per account. This is why the agent falls back between free models automatically, and why a paid model is one `model` command away.
 - **Every number is right because no model computes one.** Across all models the judge found the Healthy Scores and what-if results matching the reference — they come from `agent/tools.py`, not the LLM.
 - **Scope guard: 100% correct refusals and 0 false refusals** on both models; the two prompt injections were blocked before any LLM call.
 
