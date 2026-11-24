@@ -222,15 +222,12 @@ def compute_delta(meal_records: list, change: dict, portion_size: str = "medium"
     before_summary = _profile_summary(before_profile, compute_healthy_score(before_profile))
 
     action = change.get("action")
-    food = normalize_food_name(change.get("food") or "")
+    food = change.get("food") or ""
     replacement = change.get("replacement")
 
     after_records = list(meal_records)
     if action in ("remove", "swap") and food:
-        after_records = [
-            r for r in after_records
-            if food not in (normalize_food_name(r.get("query", "")), normalize_food_name(r.get("name", "")))
-        ]
+        after_records = [r for r in after_records if not same_food(food, r)]
     used_default = False
     if action in ("add", "swap") and replacement:
         added = lookup_nutrition([replacement])["matched"][0]
@@ -256,6 +253,20 @@ def compute_delta(meal_records: list, change: dict, portion_size: str = "medium"
         "used_default": used_default,
         "empty_plate": empty_plate,
     }
+
+
+def same_food(name: str, record: dict) -> bool:
+    """Does `name` refer to the food in `record`?
+
+    Resolved through the database (aliases and plurals included), so "fries"
+    and "hot dogs" match the meal's french_fries / hot_dog records; falls back
+    to comparing normalized names for a food that is not in the database.
+    """
+    found = find_food(name)
+    if found is not None and not record.get("is_default"):
+        return found["name"] == record.get("name")
+    key = normalize_food_name(name)
+    return key in (normalize_food_name(record.get("query", "")), normalize_food_name(record.get("name", "")))
 
 
 def find_foods_in_text(text: str) -> list:

@@ -25,6 +25,7 @@ from agent.tools import (
     lookup_nutrition,
     normalize_food_name,
     perform_write,
+    same_food,
 )
 from agent.vision_model import classify_image
 
@@ -277,7 +278,6 @@ def improvement_planner_node(state: PlateCoachState) -> dict:
     except json.JSONDecodeError:
         proposed = []
 
-    meal_foods = {normalize_food_name(r["query"]) for r in meal_records}
     portion_size = state.get("vision_result", {}).get("portion_size", "medium")
 
     suggestions = []
@@ -298,7 +298,7 @@ def improvement_planner_node(state: PlateCoachState) -> dict:
         projected_score = None
         target = change.get("food")
         removes = change.get("action") in ("remove", "swap")
-        if not (removes and (not target or normalize_food_name(target) not in meal_foods)):
+        if not (removes and (not target or not any(same_food(target, r) for r in meal_records))):
             try:
                 delta = compute_delta(meal_records, change, portion_size)
                 if not delta.get("used_default") and not delta.get("empty_plate"):
@@ -370,8 +370,7 @@ def simulation_handler_node(state: PlateCoachState) -> dict:
     # added, and a made-up improvement is shown.
     target = change.get("food")
     if change["action"] in ("remove", "swap"):
-        meal_foods = {normalize_food_name(r["query"]) for r in meal_records}
-        if not target or normalize_food_name(target) not in meal_foods:
+        if not target or not any(same_food(target, r) for r in meal_records):
             return {
                 "simulation_result": None,
                 "error": f"'{target}' is not part of this meal ({meal}), so it can't be removed or swapped.",

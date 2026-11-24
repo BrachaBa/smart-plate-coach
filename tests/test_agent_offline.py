@@ -227,3 +227,31 @@ def test_node_errors_keep_their_type():
     llm.get_chat_model = lambda model=None, temperature=0.2: type("Bad", (), {"invoke": bad_key})()
     with pytest.raises(openai.AuthenticationError):
         stream_graph(build_question_graph(), {"user_query": "how much protein is in sushi?"})
+
+
+def test_aliases_and_plurals_count_as_the_meal_food(monkeypatch):
+    from agent.tools import same_food
+
+    fries = lookup_nutrition(["french_fries"])["matched"]
+    assert same_food("fries", fries[0]) and same_food("french fries", fries[0])
+    assert same_food("hot dogs", lookup_nutrition(["hot_dog"])["matched"][0])
+    assert not same_food("sushi", fries[0])
+
+    original = FakeLLM.invoke
+
+    def parse_fries(self, prompt):
+        if "what-if simulation parser" in prompt:
+            return AIMessage(content='{"action": "swap", "food": "fries", "replacement": "side salad"}',
+                             usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2})
+        return original(self, prompt)
+
+    monkeypatch.setattr(FakeLLM, "invoke", parse_fries)
+    result = build_simulation_graph().invoke({
+        "user_query": "what if I swap the fries for a salad?",
+        "nutrition_lookup": lookup_nutrition(["french_fries"]),
+        "vision_result": {"portion_size": "medium"},
+    })
+    expected = compute_delta(fries, {"action": "swap", "food": "french_fries", "replacement": "side salad"})
+    assert result["error"] is None
+    assert result["simulation_result"]["after"] == expected["after"]
+    assert result["simulation_result"]["after"]["calories"] != result["simulation_result"]["before"]["calories"]

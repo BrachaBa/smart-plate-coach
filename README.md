@@ -34,6 +34,8 @@ The project has two parts (`docs/Smart_Plate_Coach_AI_Spec.pdf`):
 
 ### Option 2 — from source
 
+Requires **Python 3.11 or newer** (developed and tested on 3.12).
+
 ```bash
 python -m venv venv
 venv\Scripts\activate            # macOS/Linux: source venv/bin/activate

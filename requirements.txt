@@ -1,3 +1,4 @@
+# Python 3.11+ (tested on 3.12).
 # Agent runtime (Part B) -- everything `python -m agent.cli`, the evals and
 # agent.exe need. The vision classifier runs through onnxruntime, so torch is
 # NOT needed here. Training the model (Part A) uses requirements-vision.txt.
