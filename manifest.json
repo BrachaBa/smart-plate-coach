@@ -7,7 +7,6 @@
   "release_date": "2026-11-22",
   "repository_url": "https://github.com/BrachaBa/smart-plate-coach",
   "download_url": "https://github.com/BrachaBa/smart-plate-coach/releases/download/v1.0.0/agent.exe",
-
   "target_audience": "Health-conscious adults, people tracking their eating habits, nutrition students",
   "professional_fields": [
     "Nutrition",
@@ -32,13 +31,11 @@
     "What if I add a side salad to this meal?",
     "What is a healthier swap for french fries?"
   ],
-
   "technical_specifications": {
     "framework": "LangGraph",
     "llm_provider": "OpenRouter",
     "supported_models": [
-      "google/gemma-4-26b-a4b-it:free",
-      "google/gemma-4-31b-it:free",
+      "nvidia/nemotron-3.5-lightning:free",
       "anthropic/claude-haiku-5.5",
       "openai/gpt-4o-mini",
       "anthropic/claude-sonnet-5.5"

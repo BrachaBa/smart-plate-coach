@@ -237,6 +237,11 @@ def compute_delta(meal_records: list, change: dict, portion_size: str = "medium"
         used_default = added["is_default"]
         after_records.append(added)
 
+    # A change that leaves no food on the plate (removing the only dish, or
+    # swapping it for a drink) has no meaningful score: an empty profile scores
+    # 55 from the absence of penalties alone. Callers show no number for it.
+    empty_plate = not any(not r.get("is_drink") for r in after_records)
+
     after_profile = aggregate_profile(after_records, portion_size)
     after_summary = _profile_summary(after_profile, compute_healthy_score(after_profile))
 
@@ -244,7 +249,13 @@ def compute_delta(meal_records: list, change: dict, portion_size: str = "medium"
 
     # used_default: the added food is not in the database, so "after" rests on the
     # neutral default profile -- callers show no projected number in that case.
-    return {"before": before_summary, "after": after_summary, "delta": delta, "used_default": used_default}
+    return {
+        "before": before_summary,
+        "after": after_summary,
+        "delta": delta,
+        "used_default": used_default,
+        "empty_plate": empty_plate,
+    }
 
 
 def find_foods_in_text(text: str) -> list:
@@ -255,11 +266,11 @@ def find_foods_in_text(text: str) -> list:
     normalized = "_" + normalize_food_name(text.replace("?", " ").replace(",", " ").replace(".", " ")) + "_"
     found, taken = [], []
     for key in sorted(db, key=len, reverse=True):
-        needle = f"_{key}_"
-        start = normalized.find(needle)
-        if start == -1:
-            # also accept a plural form ("donuts" for "donut")
-            start = normalized.find(f"_{key}s_")
+        # also accept plural forms ("donuts" for "donut", "tomatoes" for "tomato")
+        for needle in (f"_{key}_", f"_{key}s_", f"_{key}es_"):
+            start = normalized.find(needle)
+            if start != -1:
+                break
         if start == -1:
             continue
         span = (start, start + len(needle))
@@ -282,10 +293,17 @@ def perform_write(pending_write: dict) -> Path:
     if pending_write.get("mode") == "append_json":
         entries = []
         if target.exists():
+            # Never overwrite a history file we cannot read: a hand-edited file
+            # with one bad comma would otherwise lose every saved meal.
             try:
                 entries = json.loads(target.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                entries = []
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"{target} is not valid JSON ({exc}); nothing was written. "
+                    "Fix the file or move it away, then save again."
+                ) from exc
+            if not isinstance(entries, list):
+                raise ValueError(f"{target} does not contain a list of meals; nothing was written.")
         entries.append(pending_write["content"])
         target.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
     else:

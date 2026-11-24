@@ -51,6 +51,7 @@ def run(models: list[str]) -> None:
                 "completion_tokens": t["completion_tokens"],
                 "actual_cost_usd": f"{t['actual_cost_usd']:.8f}",
                 "theoretical_cost_usd": f"{t['theoretical_cost_usd']:.8f}",
+                "cost_note": result["cost_note"],
                 "error": result["error"],
             })
             for k in totals:

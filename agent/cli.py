@@ -160,8 +160,9 @@ def stream_graph(graph, graph_input, config=None, resuming: str | None = None) -
                 resuming = None
             else:
                 info(f"Entering Node: {event['name']}...")
-        elif event.get("error"):
-            raise RuntimeError(f"node {event['name']} failed: {event['error']}")
+        # A failed node yields a task event with "error" and LangGraph then raises
+        # the original exception itself -- it is left to propagate as is, so
+        # guarded() can tell an OpenRouter error (bad key, rate limit) from a bug.
 
 
 def run_with_hitl(graph, graph_input, config) -> dict:
@@ -204,6 +205,13 @@ def clean_path(text: str) -> str:
 
 def is_image_path(text: str) -> bool:
     return Path(clean_path(text)).suffix.lower() in (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+
+
+def is_model_command(text: str) -> bool:
+    """`model <provider/name>` -- exactly one more token, shaped like an OpenRouter
+    slug. "model meal plan ideas?" is a question, not a model switch."""
+    parts = text.split()
+    return len(parts) == 2 and parts[0].lower() == "model" and "/" in parts[1]
 
 
 def prompt_goal() -> str:
@@ -505,13 +513,11 @@ def main():
                 print_cost(session.usage_log, "Session total")
                 if not session.usage_log:
                     print("No LLM calls yet this session.")
-            elif lower == "model" or lower.startswith("model "):
-                name = cmd[5:].strip()
-                if name:
-                    session.model = name
-                    info(f"Model switched to {name}")
-                else:
-                    print(f"Current model: {session.model}")
+            elif lower == "model":
+                print(f"Current model: {session.model}")
+            elif is_model_command(cmd):
+                session.model = cmd.split()[1]
+                info(f"Model switched to {session.model}")
             elif lower == "history":
                 guarded(session, lambda: run_history(session, graphs))
             elif lower in ("export-summary", "export"):

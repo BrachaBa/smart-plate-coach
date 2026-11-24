@@ -114,6 +114,7 @@ def run(models: list[str], repeats: int, merge: bool = False) -> None:
                     "completion_tokens": result["costs"]["total"]["completion_tokens"],
                     "cost_usd": f"{result['costs']['total']['actual_cost_usd']:.8f}",
                     "theoretical_cost_usd": f"{result['costs']['total']['theoretical_cost_usd']:.8f}",
+                    "cost_note": result["cost_note"],
                 }
                 if result["status"] == "ok":
                     try:

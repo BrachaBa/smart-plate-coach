@@ -301,7 +301,7 @@ def improvement_planner_node(state: PlateCoachState) -> dict:
         if not (removes and (not target or normalize_food_name(target) not in meal_foods)):
             try:
                 delta = compute_delta(meal_records, change, portion_size)
-                if not delta.get("used_default"):
+                if not delta.get("used_default") and not delta.get("empty_plate"):
                     projected_score = delta["after"]["score"]
             except (KeyError, TypeError, IndexError):
                 projected_score = None
@@ -365,8 +365,27 @@ def simulation_handler_node(state: PlateCoachState) -> dict:
             **usage,
         }
 
+    # Same rule as the planner: only a food that is part of this meal can be
+    # removed or swapped -- otherwise nothing is removed, the replacement is
+    # added, and a made-up improvement is shown.
+    target = change.get("food")
+    if change["action"] in ("remove", "swap"):
+        meal_foods = {normalize_food_name(r["query"]) for r in meal_records}
+        if not target or normalize_food_name(target) not in meal_foods:
+            return {
+                "simulation_result": None,
+                "error": f"'{target}' is not part of this meal ({meal}), so it can't be removed or swapped.",
+                **usage,
+            }
+
     portion_size = state.get("vision_result", {}).get("portion_size", "medium")
     delta = compute_delta(meal_records, change, portion_size)
+    if delta["empty_plate"]:
+        return {
+            "simulation_result": None,
+            "error": "That change would leave no food on the plate, so there is no meal left to score.",
+            **usage,
+        }
     return {"simulation_result": delta, "simulation_change": change, "error": None, **usage}
 
 
@@ -553,7 +572,7 @@ def hitl_gate_node(state: PlateCoachState) -> dict:
 
     try:
         path = perform_write(pending_write)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:  # ValueError: an unreadable history file, left untouched
         return {
             "pending_write": None,
             "write_result": None,

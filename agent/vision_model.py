@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from agent.class_names import CLASS_NAMES
 
@@ -91,7 +91,9 @@ def classify_image(image_path: str, top_k: int = 3) -> dict:
         raise FileNotFoundError(f"Image not found: {image_path}")
 
     try:
-        image = Image.open(path).convert("RGB")
+        # Phone photos store their orientation in EXIF; without applying it a
+        # portrait shot reaches the classifier rotated by 90 degrees.
+        image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
     except (UnidentifiedImageError, OSError) as exc:
         raise ValueError(f"Unsupported or corrupted image file: {image_path}") from exc
 

@@ -10,11 +10,12 @@ from langchain_core.messages import AIMessage
 from langgraph.types import Command
 
 import agent.llm as llm
+import agent.pricing as pricing
 import agent.nodes as nodes
 from agent.graph import build_analysis_graph, build_export_graph, build_question_graph, build_simulation_graph
 from agent.guardrails import detect_prompt_injection
 from agent.pricing import cost_breakdown
-from agent.tools import compute_delta, find_food, find_foods_in_text, lookup_nutrition
+from agent.tools import compute_delta, find_food, find_foods_in_text, lookup_nutrition, perform_write
 
 
 class FakeLLM:
@@ -50,6 +51,8 @@ class FakeLLM:
 @pytest.fixture(autouse=True)
 def fake_llm(monkeypatch):
     FakeLLM.calls = []
+    # Offline means offline: price from the built-in snapshot, never fetch live prices.
+    monkeypatch.setattr(pricing, "_prices", dict(pricing.SNAPSHOT))
     monkeypatch.setattr(llm, "get_chat_model", lambda model=None, temperature=0.2: FakeLLM(model))
     monkeypatch.setattr(
         nodes, "classify_image",
@@ -147,3 +150,80 @@ def test_cost_breakdown_has_theoretical_cost_for_free_models():
     step = report["steps"][0]
     assert step["actual_cost_usd"] == 0
     assert step["theoretical_cost_usd"] > 0
+
+
+def test_plural_matches_in_questions():
+    assert set(find_foods_in_text("are donuts worse than hot dogs?")) == {"donuts", "hot_dog"}
+
+
+def test_corrupt_history_file_is_never_overwritten(tmp_path):
+    history = tmp_path / "plate_coach_history.json"
+    history.write_text('[{"food": "pizza"} {"food": "sushi"}]', encoding="utf-8")  # missing comma
+    with pytest.raises(ValueError):
+        perform_write({"target": str(history), "mode": "append_json", "content": {"food": "pho"}})
+    assert history.read_text(encoding="utf-8") == '[{"food": "pizza"} {"food": "sushi"}]'
+
+    history.write_text('{"food": "pizza"}', encoding="utf-8")  # valid JSON, not a list
+    with pytest.raises(ValueError):
+        perform_write({"target": str(history), "mode": "append_json", "content": {"food": "pho"}})
+
+
+def test_hitl_reports_unreadable_history_instead_of_crashing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "plate_coach_history.json").write_text("not json", encoding="utf-8")
+    graph = build_analysis_graph()
+    config = {"configurable": {"thread_id": "t3"}}
+    graph.invoke({"image_path": "x.jpg", "save_history": True}, config)
+    graph.invoke(Command(resume=True), config)
+    state = graph.get_state(config).values
+    assert "not valid JSON" in state["error"]
+    assert (tmp_path / "plate_coach_history.json").read_text(encoding="utf-8") == "not json"
+
+
+def test_removing_the_only_food_is_not_scored():
+    meal = lookup_nutrition(["chocolate_cake"])["matched"]
+    assert compute_delta(meal, {"action": "remove", "food": "chocolate_cake"})["empty_plate"] is True
+    assert compute_delta(meal, {"action": "swap", "food": "chocolate_cake", "replacement": "water"})["empty_plate"] is True
+    assert compute_delta(meal, {"action": "add", "replacement": "water"})["empty_plate"] is False
+
+
+def test_whatif_refuses_to_swap_a_food_that_is_not_in_the_meal(monkeypatch):
+    original = FakeLLM.invoke
+
+    def parse_fries(self, prompt):
+        if "what-if simulation parser" in prompt:
+            return AIMessage(content='{"action": "swap", "food": "french fries", "replacement": "side salad"}',
+                             usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2})
+        return original(self, prompt)
+
+    monkeypatch.setattr(FakeLLM, "invoke", parse_fries)
+    result = build_simulation_graph().invoke({
+        "user_query": "what if I swap the fries for a salad?",
+        "nutrition_lookup": lookup_nutrition(["sushi"]),
+        "vision_result": {"portion_size": "medium"},
+    })
+    assert result["simulation_result"] is None
+    assert "not part of this meal" in result["error"]
+
+
+def test_model_command_needs_a_slug():
+    from agent.cli import is_model_command
+
+    assert is_model_command("model openai/gpt-4o-mini")
+    assert not is_model_command("model meal plan ideas?")
+
+
+def test_node_errors_keep_their_type():
+    import httpx
+    import openai
+
+    from agent.cli import stream_graph
+
+    def bad_key(*args, **kwargs):
+        raise openai.AuthenticationError(
+            "bad key", response=httpx.Response(401, request=httpx.Request("POST", "http://x")), body=None
+        )
+
+    llm.get_chat_model = lambda model=None, temperature=0.2: type("Bad", (), {"invoke": bad_key})()
+    with pytest.raises(openai.AuthenticationError):
+        stream_graph(build_question_graph(), {"user_query": "how much protein is in sushi?"})

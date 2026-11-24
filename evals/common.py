@@ -20,6 +20,8 @@ from pathlib import Path
 # Evals should not need a LangSmith key; tracing stays on only if one is set.
 os.environ.setdefault("LANGSMITH_PROJECT", "plate-coach-evals")
 
+from langchain_core.callbacks import BaseCallbackHandler  # noqa: E402
+
 import agent.nodes as nodes  # noqa: E402
 from agent.graph import build_analysis_graph, build_question_graph, build_simulation_graph  # noqa: E402
 from agent.pricing import cost_breakdown  # noqa: E402
@@ -109,32 +111,73 @@ def run_task(task: dict, model: str, strict: bool = True, attempts: int = 2) -> 
     return result
 
 
+class UsageRecorder(BaseCallbackHandler):
+    """Records every LLM call's tokens as it finishes, outside the graph state.
+
+    A run that fails part-way returns no state, so its usage_log is lost -- but
+    the calls made before the failure were still billed. This keeps them.
+    """
+
+    def __init__(self):
+        self.started: dict = {}
+        self.log: list = []
+
+    def on_chat_model_start(self, serialized, messages, *, run_id, metadata=None, invocation_params=None, **kwargs):
+        params = invocation_params or kwargs.get("invocation_params") or {}
+        self.started[run_id] = {
+            "node": (metadata or {}).get("langgraph_node", "?"),
+            "model": params.get("model") or params.get("model_name") or "?",
+        }
+
+    def on_llm_end(self, response, *, run_id, **kwargs):
+        info = self.started.pop(run_id, {"node": "?", "model": "?"})
+        usage = {}
+        try:
+            usage = response.generations[0][0].message.usage_metadata or {}
+        except (AttributeError, IndexError):
+            pass
+        self.log.append({
+            **info,
+            "prompt_tokens": usage.get("input_tokens", 0),
+            "completion_tokens": usage.get("output_tokens", 0),
+        })
+
+
 def _run_task_once(task: dict, model: str, strict: bool) -> dict:
     started = time.perf_counter()
     state, status, error = {}, "ok", ""
+    recorder = UsageRecorder()
+    callbacks = {"callbacks": [recorder]}
     try:
         if task["kind"] == "analysis":
             with pinned_vision(task["food"]):
                 graph = build_analysis_graph()
                 state = graph.invoke(
                     {"image_path": f"{task['food']}.jpg", "goal": task["goal"], "model": model, "strict_model": strict},
-                    {"configurable": {"thread_id": f"{task['id']}-{model}-{time.time()}"}},
+                    {"configurable": {"thread_id": f"{task['id']}-{model}-{time.time()}"}, **callbacks},
                 )
         elif task["kind"] == "question":
-            state = build_question_graph().invoke({"user_query": task["query"], "model": model, "strict_model": strict})
+            state = build_question_graph().invoke(
+                {"user_query": task["query"], "model": model, "strict_model": strict}, callbacks
+            )
         else:
             meal = lookup_nutrition([task["food"]])
             state = build_simulation_graph().invoke({
                 "user_query": task["query"], "model": model, "strict_model": strict,
                 "nutrition_lookup": meal, "vision_result": {"portion_size": "medium"},
-            })
+            }, callbacks)
             if state.get("error"):
                 status, error = "parse_error", state["error"]
     except Exception as exc:  # recorded, not raised: a failing model is a data point
         status, error = "error", f"{type(exc).__name__}: {str(exc)[:200]}"
     latency = time.perf_counter() - started
-    costs = cost_breakdown(state.get("usage_log", []))
+    # A failed run has no state; price the calls the recorder saw instead, and
+    # say the figure covers only the calls made before the failure.
+    usage_log = state.get("usage_log") or recorder.log
+    costs = cost_breakdown(usage_log)
+    cost_note = "" if state.get("usage_log") or not recorder.log else "partial: calls before the failure"
     return {
+        "cost_note": cost_note,
         "task": task,
         "model": model,
         "status": status,
