@@ -136,6 +136,15 @@ flowchart LR
 | Streaming | `stream_mode="tasks"` prints `[INFO] Entering Node: …` as each node starts |
 | Cost & usage | Every LLM call is logged per node (`call_llm`); prices from OpenRouter's model list; free models also show a theoretical cost |
 
+### LangSmith tracing
+
+With `LANGSMITH_API_KEY` set (and `LANGSMITH_TRACING=true`), every run is traced to the
+`plate-coach-ai` project: each graph node as a span with its duration, and under it each LLM
+call with its model, prompt, output and token counts. `status` in the CLI shows whether
+tracing is on. Without a key the agent runs normally and tracing is simply off.
+
+![LangSmith trace of a meal analysis: the graph's nodes with their durations, and each LLM call with its model and token breakdown](docs/images/langsmith-trace.png)
+
 ### Why the LLM never computes a number
 
 Scores, calories and deltas are computed by deterministic code in `agent/tools.py`. The LLM
