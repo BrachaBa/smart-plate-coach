@@ -23,7 +23,6 @@ from agent.tools import (
     compute_healthy_score,
     find_foods_in_text,
     lookup_nutrition,
-    normalize_food_name,
     perform_write,
     same_food,
 )
